@@ -1,0 +1,8 @@
+*.log
+*.tmp
+*.zip
+!*.md
+bin/
+engine/
+.DS_Store
+Thumbs.db
