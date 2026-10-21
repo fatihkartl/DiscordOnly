@@ -1,0 +1,145 @@
+name: Bootstrap source and publish Windows beta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.import/**'
+      - '.github/workflows/bootstrap-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import_source:
+    name: Restore v0.3.4 source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Verify and extract exact source archive
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, io, pathlib, tarfile
+          root = pathlib.Path('.')
+          chunks = sorted(root.glob('.import/part*.b64'))
+          if not chunks:
+              print('Source already imported.')
+              raise SystemExit(0)
+          if len(chunks) != 9:
+              raise SystemExit(f'Expected 9 payload parts; got {len(chunks)}')
+          encoded = ''.join(p.read_text(encoding='ascii').strip() for p in chunks)
+          if len(encoded) != 33784:
+              raise SystemExit('Encoded length mismatch')
+          archive = base64.b64decode(encoded, validate=True)
+          digest = hashlib.sha256(archive).hexdigest()
+          expected = '1255e362b6dff4572288c6840f90fd50eb0be08e2ed3e673bec0348837513d7d'
+          if digest != expected:
+              raise SystemExit(f'Source integrity error: {digest}')
+          with tarfile.open(fileobj=io.BytesIO(archive), mode='r:bz2') as tar:
+              for member in tar.getmembers():
+                  p = pathlib.PurePosixPath(member.name)
+                  if p.is_absolute() or '..' in p.parts:
+                      raise SystemExit('Unsafe archive member')
+                  if member.isdir():
+                      continue
+                  if not member.isfile():
+                      raise SystemExit('Unexpected file type')
+                  destination = root.joinpath(*p.parts)
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  destination.write_bytes(tar.extractfile(member).read())
+          print('Verified source restored. SHA256:', digest)
+          PY
+      - name: Run source structural tests
+        shell: bash
+        run: python3 tests/validate_source.py
+      - name: Commit code and remove staging bundle
+        shell: bash
+        run: |
+          if [ -d .import ]; then
+            rm -rf .import
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add -A
+            git commit -m "feat: publish DiscordOnly v0.3.4 source and tests"
+            git push origin HEAD:main
+          else
+            echo "Already imported; no source commit needed."
+          fi
+
+  build_and_release:
+    name: Build offline Windows beta
+    needs: import_source
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Validate source structure
+        shell: pwsh
+        run: python tests/validate_source.py
+      - name: Parse PowerShell and compile C# helper
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-ChildItem -Path app,tools -Filter *.ps1 -Recurse | ForEach-Object {
+            $tokens=$null
+            $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if ($errors.Count -gt 0) { throw "PowerShell parse error $($_.FullName): $($errors | Out-String)" }
+          }
+          $csc = "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+          if (!(Test-Path $csc)) { throw 'Windows .NET Framework compiler missing' }
+          & $csc /nologo /target:winexe /out:DiscordOnly.exe /reference:System.Windows.Forms.dll launcher/DiscordOnlyLauncher.cs
+          if ($LASTEXITCODE -ne 0) { throw 'GUI launcher compilation failed' }
+      - name: Download verified upstream DPI engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $url='https://github.com/Flowseal/zapret-discord-youtube/releases/download/1.10.4/zapret-discord-youtube-1.10.4.zip'
+          $expected='291af673bd0238506f9548e0e94ca0abf244000f4c9a06960544fb01c5f97b34'
+          Invoke-WebRequest -Uri $url -OutFile upstream.zip
+          $hash=(Get-FileHash upstream.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -cne $expected) { throw "Upstream checksum mismatch: $hash" }
+          Expand-Archive upstream.zip extracted
+          $binary=Get-ChildItem extracted -Filter winws.exe -Recurse -File | Where-Object { $_.Directory.Name -eq 'bin' } | Select-Object -First 1
+          if (!$binary) { throw 'winws.exe not found in pinned upstream zip' }
+          New-Item -Type Directory -Force engine/bin | Out-Null
+          Get-ChildItem $binary.DirectoryName -File | Where-Object { $_.Extension -in @('.exe','.dll','.sys','.bin') } | Copy-Item -Destination engine/bin
+          if (!(Test-Path engine/bin/WinDivert64.sys)) { throw 'WinDivert driver missing' }
+          $license=Get-ChildItem extracted -Filter LICENSE.txt -Recurse -File | Select-Object -First 1
+          if ($license) { Copy-Item $license.FullName engine/UPSTREAM_LICENSE.txt }
+          Remove-Item upstream.zip -Force
+          Remove-Item extracted -Force -Recurse
+      - name: Assemble portable application ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -Type Directory -Force output/DiscordOnly | Out-Null
+          Copy-Item DiscordOnly.exe,Start.cmd,Start-Silent.vbs,Start-Debug.cmd,Repair-DNS.cmd,Repair-All.cmd,Diagnose-DNS.cmd,README.md,LICENSE,THIRD_PARTY_NOTICES.md -Destination output/DiscordOnly
+          Copy-Item app,tools,engine -Destination output/DiscordOnly -Recurse
+          Compress-Archive -Path output/DiscordOnly -DestinationPath DiscordOnly-Windows-Offline.zip -Force
+          if (!(Test-Path DiscordOnly-Windows-Offline.zip)) { throw 'Missing output artifact' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DiscordOnly-v0.3.4-Windows-Offline
+          path: DiscordOnly-Windows-Offline.zip
+          if-no-files-found: error
+      - name: Publish v0.3.4 prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='v0.3.4'
+          $notes='Windows beta; static tests and CI build only. Discord login, voice and multi-ISP functionality require independent verification. Portable package includes verified upstream Flowseal 1.10.4 components. Unzip fully and run DiscordOnly.exe or Start-Silent.vbs.'
+          & gh release view $tag --json url 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            & gh release upload $tag DiscordOnly-Windows-Offline.zip --clobber
+          } else {
+            & gh release create $tag DiscordOnly-Windows-Offline.zip --target main --title "DiscordOnly v0.3.4 · Windows Beta" --notes $notes --prerelease
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub prerelease publish failed' }

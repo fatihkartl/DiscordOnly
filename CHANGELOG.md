@@ -1,0 +1,11 @@
+# Changelog
+
+## v0.3.4 — Safe Auto Connect (beta)
+- Preserve the selected DPI strategy when Discord HTTPS responds successfully, even while Discord is still updating or has no visible window.
+- Do not switch profiles simply because Discord's window is slow to appear.
+- A failed HTTPS check may allow conservative alternative strategy trials only under guarded conditions.
+- Restore the original profile if automatic trials cannot confirm another profile.
+- Maintain Discord-focused NRPT + DoH, separate voice option, silent launching, tray lifecycle, and safe Exit that leaves Discord running.
+- Source structural tests passed; real Windows, voice and cross-ISP tests remain necessary.
+
+Earlier stages: v0.3.3 automatic retries; v0.3.2 X/tray lifecycle and Discord-preserving Exit; v0.2.0 scoped DNS resolution.
