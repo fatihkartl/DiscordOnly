@@ -6,7 +6,7 @@
 
 **Encrypted DNS · Targeted DPI strategies · Automatic Discord launch · Safe tray control**
 
-[![Version](https://img.shields.io/badge/version-v0.3.4-5865F2?style=for-the-badge)](https://github.com/fatihkartl/DiscordOnly/releases/tag/v0.3.4)
+[![Version](https://img.shields.io/badge/version-v0.3.4-5865F2?style=for-the-badge)](https://github.com/fatihkartl/DiscordOnly/releases)
 [![Beta](https://img.shields.io/badge/status-BETA-F59E0B?style=for-the-badge)](https://github.com/fatihkartl/DiscordOnly/releases)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=for-the-badge&logo=windows)](https://github.com/fatihkartl/DiscordOnly)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1-5391FE?style=for-the-badge&logo=powershell)](https://github.com/fatihkartl/DiscordOnly)
@@ -42,7 +42,7 @@
 
 ### 📦 Kurulum
 
-1. [**Releases sayfasını aç**](https://github.com/fatihkartl/DiscordOnly/releases/tag/v0.3.4). Varsa **DiscordOnly-Windows-Offline.zip** dosyasını indir. Henüz yayımlanmadıysa depoyu ZIP olarak indir; bu durumda motor ilk açılışta indirilir.
+1. [**Releases sayfasını aç**](https://github.com/fatihkartl/DiscordOnly/releases). Varsa **DiscordOnly-Windows-Offline.zip** dosyasını indir. Henüz yayımlanmadıysa depoyu ZIP olarak indir; bu durumda motor ilk açılışta indirilir.
 2. ZIP'i **tamamen çıkar**. Dosyaları arşiv içinden çalıştırma.
 3. `Start-Silent.vbs` veya Windows paketindeki `DiscordOnly.exe` ile başlat; yönetici iznini onayla.
 4. **Balanced** profilini seçip **START**'a bas. Discord otomatik açılmayı deneyecek.
