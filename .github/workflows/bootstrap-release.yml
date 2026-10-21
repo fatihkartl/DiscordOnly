@@ -1,78 +1,18 @@
-name: Bootstrap source and publish Windows beta
+name: Build and Publish DiscordOnly v0.3.4 Windows Beta
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - '.import/**'
       - '.github/workflows/bootstrap-release.yml'
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  import_source:
-    name: Restore v0.3.4 source
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-      - name: Verify and extract exact source archive
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import base64, hashlib, io, pathlib, tarfile
-          root = pathlib.Path('.')
-          chunks = sorted(root.glob('.import/part*.b64'))
-          if not chunks:
-              print('Source already imported.')
-              raise SystemExit(0)
-          if len(chunks) != 9:
-              raise SystemExit(f'Expected 9 payload parts; got {len(chunks)}')
-          encoded = ''.join(p.read_text(encoding='ascii').strip() for p in chunks)
-          if len(encoded) != 33784:
-              raise SystemExit('Encoded length mismatch')
-          archive = base64.b64decode(encoded, validate=True)
-          digest = hashlib.sha256(archive).hexdigest()
-          expected = '1255e362b6dff4572288c6840f90fd50eb0be08e2ed3e673bec0348837513d7d'
-          if digest != expected:
-              raise SystemExit(f'Source integrity error: {digest}')
-          with tarfile.open(fileobj=io.BytesIO(archive), mode='r:bz2') as tar:
-              for member in tar.getmembers():
-                  p = pathlib.PurePosixPath(member.name)
-                  if p.is_absolute() or '..' in p.parts:
-                      raise SystemExit('Unsafe archive member')
-                  if member.isdir():
-                      continue
-                  if not member.isfile():
-                      raise SystemExit('Unexpected file type')
-                  destination = root.joinpath(*p.parts)
-                  destination.parent.mkdir(parents=True, exist_ok=True)
-                  destination.write_bytes(tar.extractfile(member).read())
-          print('Verified source restored. SHA256:', digest)
-          PY
-      - name: Run source structural tests
-        shell: bash
-        run: python3 tests/validate_source.py
-      - name: Commit code and remove staging bundle
-        shell: bash
-        run: |
-          if [ -d .import ]; then
-            rm -rf .import
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add -A
-            git commit -m "feat: publish DiscordOnly v0.3.4 source and tests"
-            git push origin HEAD:main
-          else
-            echo "Already imported; no source commit needed."
-          fi
-
   build_and_release:
     name: Build offline Windows beta
-    needs: import_source
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
