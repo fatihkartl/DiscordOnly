@@ -75,6 +75,10 @@ START bağlantı durumuna göre **muhafazakâr HTTPS kontrollü** geçiş kullan
 
 **Limits:** HTTPS success is not proof of voice/chat readiness. Neither universal ISP coverage nor zero impact on gaming is guaranteed. Requires administrator permissions and real-world testing. This is a **beta** project.
 
+### What a clean Exit does
+
+The tray **Exit** shuts down only DiscordOnly-owned DNS/DPI processes, removes its temporary NRPT rules and **leaves Discord running**. NRPT routing is domain-scoped, **not per-process**. This project is **not universally compatible** with every ISP. A forced termination may require `Repair-All.cmd`.
+
 ## 🛠️ Development & CI
 
 - **App:** Windows PowerShell 5.1 / Windows Forms
