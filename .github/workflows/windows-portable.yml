@@ -52,8 +52,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path output/DiscordOnly | Out-Null
-          Copy-Item DiscordOnly.exe,Start.cmd,Start-Silent.vbs,Start-Debug.cmd,Repair-DNS.cmd,Repair-All.cmd,Diagnose-DNS.cmd,README.md,LICENSE,THIRD_PARTY_NOTICES.md -Destination output/DiscordOnly
-          Copy-Item app -Destination output/DiscordOnly -Recurse
+          Copy-Item DiscordOnly.exe,Start.cmd,Start-Silent.vbs,Start-Debug.cmd,Security-Check.cmd,Repair-DNS.cmd,Repair-All.cmd,Diagnose-DNS.cmd,README.md,LICENSE,THIRD_PARTY_NOTICES.md,SECURITY_AUDIT.md -Destination output/DiscordOnly
+          Copy-Item app,security -Destination output/DiscordOnly -Recurse
           Copy-Item tools -Destination output/DiscordOnly -Recurse
           Copy-Item engine -Destination output/DiscordOnly -Recurse
           Compress-Archive -Path output/DiscordOnly -DestinationPath DiscordOnly-Windows-Offline.zip -Force
