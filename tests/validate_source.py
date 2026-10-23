@@ -56,7 +56,7 @@ readme = (ROOT / 'README.md').read_text('utf8')
 assert 'not per-process' in readme
 assert 'universally compatible' in readme
 assert 'Repair-All.cmd' in readme
-assert 'v0.3.4' in readme
+assert 'v0.3.5' in readme
 
 # Basic delimiter safety: ensure odd number of here-string opening/closing markers not introduced.
 for filename in (ROOT / 'app').glob('*.ps1'):
