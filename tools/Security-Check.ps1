@@ -34,10 +34,15 @@ if ($ScanWithDefender) {
         Report 'Starting Microsoft Defender CUSTOM scan of project directory...'
         try {
             Start-MpScan -ScanType CustomScan -ScanPath $root -ErrorAction Stop
+            $cachedEngine=Join-Path $reportFolder 'engine'
+            if (Test-Path -LiteralPath $cachedEngine -PathType Container) {
+                Report 'Starting Defender CUSTOM scan of cached DPI engine...'
+                Start-MpScan -ScanType CustomScan -ScanPath $cachedEngine -ErrorAction Stop
+            }
             Report 'Defender scan command finished; CHECK WINDOWS SECURITY PROTECTION HISTORY for detections.'
         } catch { Report ('DEFENDER SCAN FAILED: '+$_.Exception.Message) }
     } else {
-        Report 'DEFENDER SCAN SKIPPED: Defender is inactive/unavailable. Use your active antivirus (e.g. Kaspersky) to scan the folder manually.'
+        Report 'DEFENDER SCAN SKIPPED: Defender is inactive/unavailable. Use your active antivirus (e.g. Kaspersky) to scan the project AND cached engine folder manually.'
     }
 }
 $engine=Join-Path $reportFolder 'engine\bin\winws.exe'
