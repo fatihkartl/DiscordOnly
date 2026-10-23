@@ -1,4 +1,4 @@
-name: Build and Publish DiscordOnly v0.3.4 Windows Beta
+name: Build and Publish DiscordOnly v0.3.5 Windows Beta
 
 on:
   workflow_dispatch:
@@ -20,7 +20,9 @@ jobs:
           ref: main
       - name: Validate source structure
         shell: pwsh
-        run: python tests/validate_source.py
+        run: |
+          python tests/validate_source.py
+          python tests/test_security.py
       - name: Parse PowerShell and compile C# helper
         shell: pwsh
         run: |
@@ -59,27 +61,27 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           New-Item -Type Directory -Force output/DiscordOnly | Out-Null
-          Copy-Item DiscordOnly.exe,Start.cmd,Start-Silent.vbs,Start-Debug.cmd,Repair-DNS.cmd,Repair-All.cmd,Diagnose-DNS.cmd,README.md,LICENSE,THIRD_PARTY_NOTICES.md -Destination output/DiscordOnly
-          Copy-Item app,tools,engine -Destination output/DiscordOnly -Recurse
+          Copy-Item DiscordOnly.exe,Start.cmd,Start-Silent.vbs,Start-Debug.cmd,Security-Check.cmd,Repair-DNS.cmd,Repair-All.cmd,Diagnose-DNS.cmd,README.md,LICENSE,THIRD_PARTY_NOTICES.md,SECURITY_AUDIT.md -Destination output/DiscordOnly
+          Copy-Item app,tools,engine,security -Destination output/DiscordOnly -Recurse
           Compress-Archive -Path output/DiscordOnly -DestinationPath DiscordOnly-Windows-Offline.zip -Force
           if (!(Test-Path DiscordOnly-Windows-Offline.zip)) { throw 'Missing output artifact' }
       - uses: actions/upload-artifact@v4
         with:
-          name: DiscordOnly-v0.3.4-Windows-Offline
+          name: DiscordOnly-v0.3.5-Windows-Offline
           path: DiscordOnly-Windows-Offline.zip
           if-no-files-found: error
-      - name: Publish v0.3.4 prerelease
+      - name: Publish v0.3.5 prerelease
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference='Stop'
-          $tag='v0.3.4'
+          $tag='v0.3.5'
           $notes='Windows beta; static tests and CI build only. Discord login, voice and multi-ISP functionality require independent verification. Portable package includes verified upstream Flowseal 1.10.4 components. Unzip fully and run DiscordOnly.exe or Start-Silent.vbs.'
           & gh release view $tag --json url 2>$null
           if ($LASTEXITCODE -eq 0) {
             & gh release upload $tag DiscordOnly-Windows-Offline.zip --clobber
           } else {
-            & gh release create $tag DiscordOnly-Windows-Offline.zip --target main --title "DiscordOnly v0.3.4 · Windows Beta" --notes $notes --prerelease
+            & gh release create $tag DiscordOnly-Windows-Offline.zip --target main --title "DiscordOnly v0.3.5 · Windows Beta" --notes $notes --prerelease
           }
           if ($LASTEXITCODE -ne 0) { throw 'GitHub prerelease publish failed' }
