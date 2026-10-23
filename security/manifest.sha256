@@ -1,6 +1,6 @@
 # DiscordOnly v0.3.5 source SHA256; unsigned manifest, not a malware verdict
 b66eaa25628e691d0d63f44be31a2ab4d9733cacff57ab0be30456dfbe387a86  app/launcher.ps1
-e295935ca72f99613620ec40db5759a60f80f679e03cfd8ef4fb112914e87b76  app/DiscordOnly.ps1
+deae99813f9a1e11db115e001d28dbce8fda5449ef326c24f62a45d297fa84ab  app/DiscordOnly.ps1
 5d08bda4d24252adc7d2994ccbbe004259701e07b0946409d8095e92f279e16e  app/DiscordDnsProxy.ps1
 c274fa437b0a6ce126166ce245c6a5623c7575583efb380c8a8cc2a4cd5e06cd  app/DiscordDnsProxy.cs
 3eb1cd553a29d57b7c66f579481dbb43dbc05bfcd72cb54542d012b7ecf915ac  tools/Repair-All.ps1
