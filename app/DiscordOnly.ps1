@@ -1034,7 +1034,7 @@ try {
     if ($null -ne $old) {
         if ($old.Profile -in @('Balanced','Alternative','Gentle')) { $script:ProfileBox.SelectedItem=[string]$old.Profile }
         $script:VoiceCheck.Checked=[bool]$old.Voice
-        $script:AutoConflicts.Checked=[bool]$old.AutoConflicts
+        $script:AutoConflicts.Checked=$false # Retired unsafe saved setting
     }
     $script:ProfileBox.Add_SelectedIndexChanged({ if (!$script:ChangingProfileAutomatically) { Save-Settings } })
     $script:VoiceCheck.Add_CheckedChanged({ Save-Settings })
