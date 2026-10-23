@@ -13,7 +13,7 @@ $required=@('app/launcher.ps1','app/DiscordOnly.ps1','app/DiscordDnsProxy.ps1',
     'Start-Silent.vbs','Start.cmd','Start-Debug.cmd','Security-Check.cmd',
     'Repair-All.cmd','Repair-DNS.cmd','Diagnose-DNS.cmd','launcher/DiscordOnlyLauncher.cs')
 try {
-    $rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\','/')
+    $rootPath=[IO.Path]::GetFullPath($Root)
     $manifestFull=[IO.Path]::GetFullPath($ManifestFile)
     if (!(Test-Path -LiteralPath $manifestFull -PathType Leaf)) { throw 'Missing security manifest' }
     $entries=@{}
