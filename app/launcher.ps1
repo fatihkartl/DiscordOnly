@@ -26,6 +26,18 @@ function Report-StartupFailure($failure) {
 
 try {
     if (!(Test-Path -LiteralPath $main)) { throw "Missing application file: $main. Extract the entire ZIP before launching Start.cmd." }
+    # Fail closed if a source file has been changed since this release was packaged.
+    # This is a local checksum check, NOT an antivirus verdict or signed attestation.
+    $root = Split-Path -Parent $PSScriptRoot
+    $auditScript = Join-Path $root 'tools\Test-Integrity.ps1'
+    $manifest = Join-Path $root 'security\manifest.sha256'
+    if (!(Test-Path -LiteralPath $auditScript) -or !(Test-Path -LiteralPath $manifest)) {
+        throw 'Security integrity files missing. Download and extract the full official project archive again. Do not bypass antivirus alerts.'
+    }
+    $integrityOk = & $auditScript -Root $root -ManifestFile $manifest -Quiet
+    if ($integrityOk -ne $true) {
+        throw 'Integrity verification failed. Application startup blocked. Run Security-Check.cmd and reinstall from a trusted source.'
+    }
     # Capture syntax errors in GUI files before attempting elevation.
     $tokens = $null; $parseErrors = $null
     [void][System.Management.Automation.Language.Parser]::ParseFile($main, [ref]$tokens, [ref]$parseErrors)
