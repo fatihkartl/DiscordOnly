@@ -83,7 +83,7 @@ assert '/target:winexe' in (ROOT / '.github' / 'workflows' / 'windows-portable.y
 print('v0.3.x hidden launcher + opt-in profile checks passed.')
 
 # 0.3.1 teardown rules: visible X hides, explicit Exit cleans up and blocks on errors.
-assert "$script:Version = '0.3.4'" in ps
+assert "$script:Version = '0.3.5'" in ps
 assert '$script:Form.Add_FormClosing' in ps
 assert '$eventArgs.Cancel=$true' in ps and '$script:Form.Hide()' in ps
 assert '$script:Tray.Visible=$true' in ps
