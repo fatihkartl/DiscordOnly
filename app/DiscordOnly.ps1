@@ -8,7 +8,7 @@ Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:Version = '0.3.4'
+$script:Version = '0.3.5'
 $script:StateRoot = Join-Path $env:LOCALAPPDATA 'DiscordOnly'
 $script:EngineRoot = Join-Path $script:StateRoot 'engine'
 $script:Bin = Join-Path $script:EngineRoot 'bin'
@@ -209,7 +209,7 @@ function Stop-Conflicts {
     $others = @(Process-Conflicts)
     if ($others.Count -eq 0) { return $true }
     $names = ($others | ForEach-Object { '{0} (PID {1})' -f $_.Name, $_.ProcessId }) -join "`r`n"
-    if (!$script:AutoConflicts.Checked) {
+    if ($true) { # Explicit consent is mandatory, regardless of persisted settings.
         $answer = [System.Windows.Forms.MessageBox]::Show(
             "DPI araclari cakisma yaratabilir:`r`n$names`r`n`r`nYalnizca bu surecler kapatilsin mi?",
             'DiscordOnly - conflict detection', 'YesNo', 'Warning')
@@ -996,8 +996,9 @@ try {
     $script:AutoConflicts=New-Object System.Windows.Forms.CheckBox
     $script:AutoConflicts.Location=[System.Drawing.Point]::new(28,239)
     $script:AutoConflicts.Size=[System.Drawing.Size]::new(600,25)
-    $script:AutoConflicts.Text='Auto-close detected conflicting DPI tools (without asking)'
+    $script:AutoConflicts.Text='Security: confirm before stopping conflicting DPI tools'
     $script:AutoConflicts.Checked=$false
+    $script:AutoConflicts.Enabled=$false # Safety: do not auto-terminate unrelated processes.
     $script:AutoOpenDiscord=New-Object System.Windows.Forms.CheckBox
     $script:AutoOpenDiscord.Location=[System.Drawing.Point]::new(28,267)
     $script:AutoOpenDiscord.Size=[System.Drawing.Size]::new(610,26)
@@ -1017,6 +1018,8 @@ try {
     $copyLogBtn=Ui-Button 'COPY LOG' 377 393 129 ([System.Drawing.Color]::FromArgb(70,74,88))
     $openLogsBtn=Ui-Button 'LOG FOLDER' 520 393 142 ([System.Drawing.Color]::FromArgb(70,74,88))
     $script:Form.Controls.AddRange(@($dnsHelp,$autoProfileBtn,$copyLogBtn,$openLogsBtn))
+    $securityBtn=Ui-Button 'SECURITY CHECK' 493 427 170 ([System.Drawing.Color]::FromArgb(67,112,87))
+    $script:Form.Controls.Add($securityBtn)
     $logLbl=Ui-Label 'EVENT LOG' 26 440 450 25 10
     $script:LogBox=New-Object System.Windows.Forms.TextBox
     $script:LogBox.Location=[System.Drawing.Point]::new(24,470)
@@ -1058,6 +1061,13 @@ try {
     $autoProfileBtn.Add_Click({ Find-WorkingProfile })
     $copyLogBtn.Add_Click({ Copy-Diagnostics })
     $openLogsBtn.Add_Click({ Open-LogFolder })
+    $securityBtn.Add_Click({
+        $audit=Join-Path (Split-Path -Parent $PSScriptRoot) 'tools\Security-Check.ps1'
+        try {
+            Log 'Security check requested: opening visible antivirus and integrity report.'
+            Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList ('-NoExit -NoProfile -File "'+$audit+'" -ScanWithDefender') -WorkingDirectory (Split-Path -Parent $PSScriptRoot) -ErrorAction Stop | Out-Null
+        } catch { Log ('Security check launch failed: '+$_.Exception.Message) }
+    })
 
     $script:Tray=New-Object System.Windows.Forms.NotifyIcon
     $script:Tray.Icon=[System.Drawing.SystemIcons]::Shield; $script:Tray.Visible=$true
