@@ -12,7 +12,7 @@ for line in manifest.read_text('utf-8').splitlines():
 assert len(items) >= 17
 ps=(root/'app/DiscordOnly.ps1').read_text('utf-8-sig')
 launcher=(root/'app/launcher.ps1').read_text('utf-8')
-assert "Version = '0.3.5'" in ps
+assert "Version = '0.3.6'" in ps
 assert 'if ($true) { # Explicit consent is mandatory' in ps
 assert '$script:AutoConflicts.Enabled=$false' in ps
 assert "'SECURITY CHECK'" in ps
