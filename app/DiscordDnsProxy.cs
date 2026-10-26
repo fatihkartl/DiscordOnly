@@ -42,7 +42,8 @@ namespace DiscordOnlyDns {
                     if (QueryDomain(packet, out questionEnd) != null) {
                         byte[] busy = Failure(packet, questionEnd, 2); // SERVFAIL
                         if (busy != null) {
-                            lock (SendGate) { listener.Send(busy, busy.Length, remote); }
+                            try { lock (SendGate) { listener.Send(busy, busy.Length, remote); } }
+                            catch (SocketException ex) { WriteLog("Busy DNS response could not be sent: " + ex.Message); }
                         }
                     }
                     continue;
