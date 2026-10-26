@@ -36,6 +36,15 @@ namespace DiscordOnlyDns {
                 byte[] packet = listener.Receive(ref remote);
                 if (Interlocked.Increment(ref inFlight) > 24) {
                     Interlocked.Decrement(ref inFlight);
+                    // Return a DNS response instead of silently dropping queries
+                    // when the bounded DoH worker pool is saturated.
+                    int questionEnd;
+                    if (QueryDomain(packet, out questionEnd) != null) {
+                        byte[] busy = Failure(packet, questionEnd, 2); // SERVFAIL
+                        if (busy != null) {
+                            lock (SendGate) { listener.Send(busy, busy.Length, remote); }
+                        }
+                    }
                     continue;
                 }
                 IPEndPoint replyTo = remote;
