@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.6 — Conservative connection watchdog (beta)
+- Audit finding: prior status loop monitored winws exits but did not restore the same profile; no DNS-proxy liveness monitor existed.
+- Verify owned DPI/DNS worker processes and temporary NRPT rule twice at 10-second intervals.
+- Restart only DiscordOnly-owned infrastructure using the same profile, no Discord restart and no background HTTP-triggered profile rotation.
+- Max two automated recoveries in ten minutes; refuse on PID identity ambiguity, unrelated DPI processes or missing engine files.
+- DNS proxy overload returns SERVFAIL instead of silently dropping queries.
+- Static regression tests passed; live Windows, ISP and antivirus tests pending.
+
+
 ## v0.3.5 — Security hardening (beta; not AV-certified)
 - Visible SECURITY CHECK opens local checksum/antivirus report; attempts Defender custom scan only when active.
 - Startup fails closed if one of the pinned source/launcher files is missing or checksum-mismatched.

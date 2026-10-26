@@ -6,7 +6,7 @@
 
 **Encrypted DNS · Targeted DPI strategies · Automatic Discord launch · Safe tray control**
 
-[![Version](https://img.shields.io/badge/version-v0.3.5-5865F2?style=for-the-badge)](https://github.com/fatihkartl/DiscordOnly/releases)
+[![Version](https://img.shields.io/badge/version-v0.3.6-5865F2?style=for-the-badge)](https://github.com/fatihkartl/DiscordOnly/releases)
 [![Beta](https://img.shields.io/badge/status-BETA-F59E0B?style=for-the-badge)](https://github.com/fatihkartl/DiscordOnly/releases)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=for-the-badge&logo=windows)](https://github.com/fatihkartl/DiscordOnly)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1-5391FE?style=for-the-badge&logo=powershell)](https://github.com/fatihkartl/DiscordOnly)
@@ -19,7 +19,7 @@
 ---
 
 > [!IMPORTANT]
-> **Beta software.** DiscordOnly v0.3.5 has passed *structural source checks*, but its latest behavior has **not** been independently verified on Windows or across different ISPs. One older configuration worked on one PC. Discord voice, game compatibility and safe cleanup must be tested on each machine. No universal bypass guarantee.
+> **Beta software.** DiscordOnly v0.3.6 has passed *structural source checks*, but its latest behavior has **not** been independently verified on Windows or across different ISPs. One older configuration worked on one PC. Discord voice, game compatibility and safe cleanup must be tested on each machine. No universal bypass guarantee.
 
 ## 🇹🇷 Türkçe
 
@@ -80,7 +80,15 @@ START bağlantı durumuna göre **muhafazakâr HTTPS kontrollü** geçiş kullan
 The tray **Exit** shuts down only DiscordOnly-owned DNS/DPI processes, removes its temporary NRPT rules and **leaves Discord running**. NRPT routing is domain-scoped, **not per-process**. This project is **not universally compatible** with every ISP. A forced termination may require `Repair-All.cmd`.
 
 
-## 🛡️ Security Check — v0.3.5 Beta
+## 🛠️ Connection stability — v0.3.6 beta
+
+A new **conservative watchdog** checks DiscordOnly-owned `winws` and DNS-proxy processes and its temporary NRPT rule every 10 seconds. It waits for two consecutive failed checks before any repair. If ownership is verified, it safely tears down only its own infrastructure and attempts to restore the **same profile and voice setting**, leaving Discord running. Automatic recovery is limited to **two attempts per 10 minutes**; unknown process ownership, unrelated DPI tools, and missing engine binaries **block** automatic repair.
+
+**No automatic profile switching for brief HTTPS failures or voice-channel disconnects.** A running DPI/DNS process alone does not prove Discord works. For recurrent disconnects, collect `app.log` and `dns-proxy.log` **before restarting** and see [STABILITY_DIAGNOSTICS.md](STABILITY_DIAGNOSTICS.md). STOP and tray Exit disable automatic reconnection.
+
+**This is an unverified beta:** cross-ISP, Kaspersky, voice stability and Windows end-to-end testing remain outstanding.
+
+## 🛡️ Security Check — v0.3.6 Beta
 
 **This is a hardening update, not an antivirus clearance or security certification.**
 
@@ -90,7 +98,7 @@ A failing integrity check **blocks DiscordOnly from launching**. The application
 
 A local unsigned SHA-256 manifest is **not proof of publisher identity**, and neither a clean hash check nor a successful Defender scan makes the application universally safe. If any antivirus detects a threat, stop using the package; **do not disable antivirus or whitelist the app** to make it work.
 
-See [SECURITY_AUDIT.md](SECURITY_AUDIT.md) for the threat-model limitations and `%LOCALAPPDATA%\DiscordOnly\security-check.txt` for local reports. Until independent Windows/AV testing passes, v0.3.5 should be treated as **unverified beta**.
+See [SECURITY_AUDIT.md](SECURITY_AUDIT.md) for the threat-model limitations and `%LOCALAPPDATA%\DiscordOnly\security-check.txt` for local reports. Until independent Windows/AV testing passes, v0.3.6 should be treated as **unverified beta**.
 
 ## 🛠️ Development & CI
 
@@ -98,7 +106,7 @@ See [SECURITY_AUDIT.md](SECURITY_AUDIT.md) for the threat-model limitations and 
 - **Network:** Windows NRPT, local DoH, winws/zapret, WinDivert
 - **Testing:** `python tests/validate_source.py` (static checks only)
 - **Windows CI:** PowerShell parser checks, C# launcher compilation, verified upstream download and offline ZIP packaging
-- **Release:** GitHub Actions publishes `v0.3.5` as a **pre-release** when the pipeline succeeds
+- **Release:** GitHub Actions release builds remain blocked by an account billing restriction; do not treat this beta as verified
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for runtime dependencies and [LICENSE](LICENSE) for the original project's MIT-licensed portions.
 
