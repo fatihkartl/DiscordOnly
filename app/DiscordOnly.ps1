@@ -1,5 +1,5 @@
 ﻿#requires -version 5.1
-# DiscordOnly 0.3.4 - safe HTTPS fallback; never rotate solely because Discord UI is slow.
+# DiscordOnly 0.3.6 - stable profile plus owned-process watchdog; no HTTPS-triggered background rotation.
 # Windows 10/11 (PowerShell 5.1). Uses temporary NRPT rules for Discord hostnames only.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -8,7 +8,7 @@ Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:Version = '0.3.5'
+$script:Version = '0.3.6'
 $script:StateRoot = Join-Path $env:LOCALAPPDATA 'DiscordOnly'
 $script:EngineRoot = Join-Path $script:StateRoot 'engine'
 $script:Bin = Join-Path $script:EngineRoot 'bin'
@@ -31,6 +31,15 @@ $script:AutoTrial = $null
 $script:TrialTimer = $null
 $script:ChangingProfileAutomatically = $false
 $script:ConflictDeclined = $false
+# Persistent connection watchdog: only restarts our own infrastructure if a
+# verified process dies or the app-owned NRPT rule disappears. No HTTP-only
+# recovery, no profile rotation, and no Discord restart while connected.
+$script:WatchdogEnabled = $false
+$script:WatchdogBusy = $false
+$script:WatchdogMisses = 0
+$script:WatchdogTimer = $null
+$script:WatchdogRecoveryHistory = New-Object 'System.Collections.Generic.List[datetime]'
+$script:LastWatchdogWarning = ''
 # Initialize script-scope UI variables before the try/finally cleanup path.
 $script:Form = $null
 $script:Tray = $null
@@ -339,7 +348,10 @@ function Refresh-Status {
         }
         $script:StatusLabel.ForeColor=[System.Drawing.Color]::FromArgb(245, 191, 87)
     } else {
-        $script:StatusLabel.Text = if ($isRunning) { "RUNNING  |  PID $($p.Id)" } else { 'STOPPED' }
+        $script:StatusLabel.Text = if ($isRunning) {
+            if ($script:WatchdogEnabled) { "RUNNING  |  PID $($p.Id)  |  WATCHDOG ON" }
+            else { "RUNNING  |  PID $($p.Id)" }
+        } else { 'STOPPED' }
         $script:StatusLabel.ForeColor = if ($isRunning) { [System.Drawing.Color]::FromArgb(68, 209, 142) } else { [System.Drawing.Color]::FromArgb(255, 171, 100) }
     }
     $script:StartButton.Enabled = (!$isRunning -and !$trialActive)
@@ -349,8 +361,8 @@ function Refresh-Status {
     if ($script:Tray) { $script:Tray.Text = if ($isRunning) { 'DiscordOnly - running' } else { 'DiscordOnly - stopped' } }
     if ($script:LastKnownRunning -and !$isRunning) {
         Log 'Winws is no longer running.'
-        if ($script:DnsActive) {
-            try { Stop-DnsRoute; Log 'DNS policy cleaned up after engine unexpectedly stopped.' }
+        if ($script:DnsActive -and !$script:WatchdogEnabled -and !$script:WatchdogBusy) {
+            try { Stop-DnsRoute; Log 'DNS policy cleaned up after engine unexpectedly stopped (watchdog not active).' }
             catch { Log ('Automatic DNS cleanup failed: '+$_.Exception.Message) }
         }
     }
@@ -397,6 +409,10 @@ function Start-Bypass([bool]$AutoLaunch = $true, [bool]$QuietErrors = $false) {
     }
 }
 function Stop-Bypass {
+    # Any explicit STOP/Exit or internal trial teardown pauses the watchdog,
+    # preventing unintentional resurrection while the user is shutting down.
+    $script:WatchdogEnabled=$false
+    $script:WatchdogMisses=0
     # Always attempt BOTH cleanup stages, even if one fails.
     # Return $false rather than pretending exit is safe after a partial failure.
     $problems = New-Object 'System.Collections.Generic.List[string]'
@@ -695,6 +711,7 @@ function Hold-AutoTrial([string]$Reason) {
     Abort-TrialProbe
     $script:AutoTrial.Active=$false
     if ($script:TrialTimer) { $script:TrialTimer.Stop() }
+    $script:WatchdogEnabled=($null -ne (Owned-Process) -and $null -ne (Owned-DnsProcess))
     Log ('AUTO CONNECT: keeping current profile without switching: '+$Reason)
     Log 'AUTO CONNECT: Open Discord manually if needed; use DNS + HTTPS Test or AUTO PROFILE to investigate.'
     Refresh-Status
@@ -709,6 +726,7 @@ function Finish-AutoTrial([bool]$Success) {
         $profile=[string]$script:ProfileBox.SelectedItem
         Log ('AUTO CONNECT: gateway HTTPS is reachable with {0}. Profile retained; Discord login/voice is not verified.' -f $profile)
         Save-Settings
+        $script:WatchdogEnabled=($null -ne (Owned-Process) -and $null -ne (Owned-DnsProcess))
     } else {
         # Never leave the *last* failed candidate selected after all retries.
         # Restore the user's original strategy instead of shutting down all DNS/DPI.
@@ -727,6 +745,7 @@ function Finish-AutoTrial([bool]$Success) {
         }
         if ($null -ne (Owned-Process)) {
             Save-Settings
+            $script:WatchdogEnabled=($null -ne (Owned-Process) -and $null -ne (Owned-DnsProcess))
             Log 'AUTO CONNECT: original profile is running again. Discord remains open; connectivity still needs manual verification.'
         } else {
             Log 'AUTO CONNECT: original engine could not be restarted. Use Start-Debug.cmd and EVENT LOG for diagnosis.'
@@ -754,6 +773,7 @@ function Start-TrialProfile {
         Next-TrialProfile 'engine startup failed'
         return
     }
+    $script:WatchdogEnabled=($null -ne (Owned-Process) -and $null -ne (Owned-DnsProcess))
     $trial.GatewayOK=$false
     $trial.Request=$null
     $trial.AsyncResult=$null
@@ -863,6 +883,122 @@ function Test-GatewayQuick {
         return $false
     }
 }
+# Stability monitor runs on a separate WinForms timer every 10 seconds.
+# Only checks *locally owned* infrastructure. A slow Discord updater,
+# a failed HTTPS request or an interrupted voice session never causes a
+# profile change (or a Discord kill). Real Discord connection state cannot
+# be inferred reliably from the outside.
+function Watchdog-OwnNrptPresent {
+    try {
+        $rules=@(Get-DnsClientNrptRule -ErrorAction Stop | Where-Object {
+            $_.DisplayName -ceq $script:DnsRuleLabel -and
+            $_.Comment -ceq 'DiscordOnly local DoH bridge; removed on STOP'
+        })
+        return ($rules.Count -gt 0)
+    } catch {
+        # Failed inspection is not proof of broken routing. Never restart for
+        # an unconfirmed PowerShell/CIM error.
+        Log ('WATCHDOG: could not inspect scoped DNS rules; no changes made: '+$_.Exception.Message)
+        return $null
+    }
+}
+function Watchdog-RecordHasLiveUnknownPid([string]$Record) {
+    if (!(Test-Path -LiteralPath $Record)) { return $false }
+    $saved=Load-Json $Record
+    if ($null -eq $saved -or $null -eq $saved.Pid) { return $true }
+    try { return ($null -ne (Get-Process -Id ([int]$saved.Pid) -ErrorAction SilentlyContinue)) }
+    catch { return $true }
+}
+function Watchdog-Tick {
+    if (!$script:WatchdogEnabled -or $script:WatchdogBusy -or $script:Closing) { return }
+    if ($null -ne $script:AutoTrial -and $script:AutoTrial.Active) { return }
+    $engine=Owned-Process
+    $dns=Owned-DnsProcess
+    $nrpt=Watchdog-OwnNrptPresent
+    if ($null -eq $nrpt) { return }
+    if ($null -ne $engine -and $null -ne $dns -and $nrpt) {
+        if ($script:WatchdogMisses -gt 0) { Log 'WATCHDOG: all owned components healthy again; no restart required.' }
+        $script:WatchdogMisses=0
+        $script:LastWatchdogWarning=''
+        return
+    }
+    # Both consecutive samples are required; do not react to a single
+    # transient CIM/process query or Windows NRPT timing race.
+    $script:WatchdogMisses++
+    if ($script:WatchdogMisses -lt 2) {
+        Log ('WATCHDOG: possible outage, verifying again in 10s (winws={0}; dns={1}; nrpt={2}).' -f ($null -ne $engine),($null -ne $dns),$nrpt)
+        return
+    }
+    # A known PID occupied by an unknown process must NEVER be stopped.
+    if (($null -eq $engine -and (Watchdog-RecordHasLiveUnknownPid $script:RuntimeFile)) -or
+        ($null -eq $dns -and (Watchdog-RecordHasLiveUnknownPid $script:DnsRuntimeFile))) {
+        if ($script:LastWatchdogWarning -ne 'identity') {
+            Log 'WATCHDOG: worker identity cannot be verified; no automatic cleanup or restart. Run diagnostics.'
+            $script:LastWatchdogWarning='identity'
+        }
+        return
+    }
+    # Strict cap of two automated recoveries per 10-minute period. Do not
+    # endlessly restart elevated network components or disturb other traffic.
+    $cutoff=[DateTime]::UtcNow.AddMinutes(-10)
+    for ($i=$script:WatchdogRecoveryHistory.Count-1; $i -ge 0; $i--) {
+        if ($script:WatchdogRecoveryHistory[$i] -lt $cutoff) {
+            $script:WatchdogRecoveryHistory.RemoveAt($i)
+        }
+    }
+    try {
+        $conflicts=@(Process-Conflicts)
+        if ($conflicts.Count -gt 0) {
+            $script:WatchdogEnabled=$false
+            Log 'WATCHDOG: another DPI tool is running. Automatic repair disabled; no other processes were stopped.'
+            return
+        }
+    } catch {
+        $script:WatchdogEnabled=$false
+        Log ('WATCHDOG: cannot inspect other DPI processes. No recovery attempted: '+$_.Exception.Message)
+        return
+    }
+    if (!(Engine-Available)) {
+        $script:WatchdogEnabled=$false
+        Log 'WATCHDOG: required DPI engine file is missing (possibly quarantined). Automatic download/reinstall is BLOCKED; inspect antivirus alerts before proceeding.'
+        return
+    }
+    if ($script:WatchdogRecoveryHistory.Count -ge 2) {
+        $script:WatchdogEnabled=$false
+        Log 'WATCHDOG: recovery rate limit reached (2 attempts/10 min). Leaving automatic repair disabled; review logs and STOP safely if needed.'
+        return
+    }
+    $script:WatchdogBusy=$true
+    $script:WatchdogEnabled=$false
+    try {
+        $script:WatchdogRecoveryHistory.Add([DateTime]::UtcNow)
+        Log ('WATCHDOG: verified repeated outage (winws={0}; dns={1}; nrpt={2}); restarting only DiscordOnly infrastructure without restarting Discord.' -f ($null -ne $engine),($null -ne $dns),$nrpt)
+        if (!(Stop-Bypass)) {
+            Log 'WATCHDOG: cleanup could not be verified; automatic recovery blocked to prevent overlapping DPI/DNS workers.'
+            return
+        }
+        # Preserve selected profile and voice setting. Never try AUTO PROFILE
+        # or relaunch Discord from this background recovery path.
+        Start-Bypass -AutoLaunch $false -QuietErrors $true
+        if ($null -ne (Owned-Process) -and $null -ne (Owned-DnsProcess) -and
+            (Watchdog-OwnNrptPresent) -eq $true) {
+            $script:WatchdogMisses=0
+            $script:LastWatchdogWarning=''
+            $script:WatchdogEnabled=$true
+            Log 'WATCHDOG: recovery succeeded; same DPI profile retained. Discord was NOT restarted.'
+        } else {
+            Log 'WATCHDOG: recovery failed. Auto-recovery remains off; check app.log and dns-proxy.log.'
+            # Best effort stop prevents a Windows NRPT rule from targeting an
+            # absent loopback DNS proxy after a failed recovery.
+            [void](Stop-Bypass)
+        }
+    } catch {
+        Log ('WATCHDOG: unexpected recovery error; auto-recovery disabled: '+$_.Exception.Message)
+    } finally {
+        $script:WatchdogBusy=$false
+        Refresh-Status
+    }
+}
 function Find-WorkingProfile {
     if ($null -ne $script:AutoTrial -and $script:AutoTrial.Active) {
         Log 'AUTO PROFILE: wait for automatic startup trials to finish or press STOP.'
@@ -900,6 +1036,7 @@ function Find-WorkingProfile {
             Start-Sleep -Milliseconds 500
             if (Test-GatewayQuick) {
                 $working=$true
+                $script:WatchdogEnabled=($null -ne (Owned-Process) -and $null -ne (Owned-DnsProcess))
                 Log ('AUTO PROFILE: HTTPS reachable on {0}; profile saved.' -f $profile)
                 if (!$wasRunning -or $profile -ne $original) {
                     [void](Start-Discord)
@@ -925,6 +1062,7 @@ function Find-WorkingProfile {
             'Discord HTTPS is reachable. Test a real voice channel: UDP is not checked by Auto Profile.',
             'DiscordOnly - Auto profile', 'OK', 'Information')
     }
+    $script:WatchdogEnabled=($null -ne (Owned-Process) -and $null -ne (Owned-DnsProcess))
     Refresh-Status
 }
 function Copy-Diagnostics {
@@ -1164,6 +1302,13 @@ try {
             Cancel-AutoTrial 'watchdog exception; left current managed connection for manual inspection'
         }
     })
+    $script:WatchdogTimer=New-Object System.Windows.Forms.Timer
+    $script:WatchdogTimer.Interval=10000
+    $script:WatchdogTimer.Add_Tick({
+        try { Watchdog-Tick }
+        catch { Log ('WATCHDOG: timer check error; no network changes applied: '+$_.Exception.Message) }
+    })
+    $script:WatchdogTimer.Start()
     try {
         # Automatic recovery after a crash: clean up only verified owned PID/rule.
         # 0.3.0 did not clean up an abandoned winws PID during startup.
